@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Pressable } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Pressable, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, Filter, Heart, MapPin, Trophy, Gift } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useMerchantsStore } from '@/store/merchantsStore';
 import { usePointsStore } from '@/store/pointsStore';
+import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/Colors';
 
 export default function StoresScreen() {
     const [searchQuery, setSearchQuery] = useState('');
-    const { merchants, toggleFavorite } = useMerchantsStore();
+    const [refreshing, setRefreshing] = useState(false);
+
+    const { customer } = useAuthStore();
+    const { merchants, toggleFavorite, isLoading, refreshMerchants } = useMerchantsStore();
     const { getPointsByMerchant } = usePointsStore();
 
     const filteredMerchants = merchants.filter(
@@ -17,6 +21,34 @@ export default function StoresScreen() {
             merchant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             merchant.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const onRefresh = useCallback(async () => {
+        if (!customer?.id) return;
+        setRefreshing(true);
+        try {
+            await refreshMerchants(customer.id);
+        } catch (error) {
+            console.error('Error refreshing merchants:', error);
+        }
+        setRefreshing(false);
+    }, [customer?.id]);
+
+    const handleToggleFavorite = async (merchantId: string) => {
+        if (!customer?.id) return;
+        await toggleFavorite(customer.id, merchantId);
+    };
+
+    // Loading inicial
+    if (isLoading && merchants.length === 0) {
+        return (
+            <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center" edges={['top']}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text className="text-gray-500 mt-4" style={{ fontFamily: 'Lato-Regular' }}>
+                    Cargando comercios...
+                </Text>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
@@ -53,9 +85,18 @@ export default function StoresScreen() {
                 className="flex-1 px-6"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingTop: 20, paddingBottom: 100 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[Colors.primary]}
+                        tintColor={Colors.primary}
+                    />
+                }
             >
                 {filteredMerchants.map((merchant) => {
-                    const points = getPointsByMerchant(merchant.id);
+                    // Usar businessSettingsId para obtener puntos
+                    const points = getPointsByMerchant(merchant.businessSettingsId.toString());
                     return (
                         <Pressable
                             key={merchant.id}
@@ -112,7 +153,7 @@ export default function StoresScreen() {
 
                                     {/* Favorite Button */}
                                     <TouchableOpacity
-                                        onPress={() => toggleFavorite(merchant.id)}
+                                        onPress={() => handleToggleFavorite(merchant.id)}
                                         className="p-2"
                                         activeOpacity={0.7}
                                     >
@@ -195,7 +236,7 @@ export default function StoresScreen() {
                                                 className="text-sm font-bold text-gray-900"
                                                 style={{ fontFamily: 'Lato-Bold' }}
                                             >
-                                                {points}
+                                                {merchant.points || points}
                                             </Text>
                                         </View>
                                     </View>
@@ -205,13 +246,13 @@ export default function StoresScreen() {
                     );
                 })}
 
-                {filteredMerchants.length === 0 && (
+                {filteredMerchants.length === 0 && !isLoading && (
                     <View className="items-center justify-center py-20">
                         <Text
                             className="text-gray-400 text-center"
                             style={{ fontFamily: 'Lato-Regular', fontSize: 16 }}
                         >
-                            No se encontraron comercios
+                            {searchQuery ? 'No se encontraron comercios' : 'No estás registrado en ningún comercio'}
                         </Text>
                     </View>
                 )}

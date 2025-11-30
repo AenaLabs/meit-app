@@ -1,10 +1,22 @@
-import { View, Text } from "react-native";
+import { Redirect } from "expo-router";
+import { useAuthStore } from "@/store/authStore";
+import { View, ActivityIndicator } from "react-native";
 
-export default function Home() {
-    return (
-        <View className="flex-1 items-center justify-center bg-white">
-            <Text className="text-2xl font-bold text-primary">Welcome to Meit!</Text>
-            <Text className="text-neutral mt-2">Mobile App</Text>
-        </View>
-    );
+export default function Index() {
+    const { session, isLoading } = useAuthStore();
+
+    if (isLoading) {
+        return (
+            <View className="flex-1 items-center justify-center bg-white">
+                <ActivityIndicator size="large" color="#812797" />
+            </View>
+        );
+    }
+
+    // Redirigir basado en el estado de autenticación
+    if (session) {
+        return <Redirect href="/(tabs)" />;
+    }
+
+    return <Redirect href="/auth/login" />;
 }

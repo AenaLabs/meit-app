@@ -1,7 +1,28 @@
 import { create } from 'zustand';
+import {
+    getCustomerBusinesses,
+    toggleFavoriteBusiness,
+    countActiveChallenges,
+    countActiveGiftCards,
+    type BusinessWithDetails
+} from '@/services/businesses';
+
+// Mapeo de categorías a emojis para placeholder de logo
+const categoryEmojis: Record<string, string> = {
+    'Cafetería': '☕',
+    'Gimnasio': '💪',
+    'Restaurante': '🍽️',
+    'Librería': '📚',
+    'Tienda': '🛍️',
+    'Salud': '💊',
+    'Belleza': '💅',
+    'Tecnología': '💻',
+    'General': '🏪',
+};
 
 export interface Merchant {
-    id: string;
+    id: string;                    // customer_business.id
+    businessSettingsId: number;    // business_settings.id
     name: string;
     logo: string;
     description: string;
@@ -12,83 +33,103 @@ export interface Merchant {
     location?: string;
     phone?: string;
     hours?: string;
+    points: number;
+    visitsCount: number;
 }
 
 interface MerchantsState {
     merchants: Merchant[];
-    favoriteMerchants: Merchant[];
     isLoading: boolean;
-    setMerchants: (merchants: Merchant[]) => void;
-    toggleFavorite: (merchantId: string) => void;
+    error: string | null;
+    loadMerchants: (customerId: string) => Promise<void>;
+    refreshMerchants: (customerId: string) => Promise<void>;
+    toggleFavorite: (customerId: string, merchantId: string) => Promise<void>;
     getMerchantById: (id: string) => Merchant | undefined;
+    getMerchantByBusinessSettingsId: (businessSettingsId: number) => Merchant | undefined;
+    getFavoriteMerchants: () => Merchant[];
 }
 
 export const useMerchantsStore = create<MerchantsState>((set, get) => ({
-    merchants: [
-        // Mock data
-        {
-            id: '1',
-            name: 'Café Central',
-            logo: '☕',
-            description: 'El mejor café de la ciudad',
-            category: 'Cafetería',
-            isFavorite: true,
-            activeRewards: 3,
-            activeChallenges: 2,
-            location: 'Calle Principal 123',
-            phone: '+1234567890',
-            hours: 'Lun-Vie: 7:00 AM - 8:00 PM',
-        },
-        {
-            id: '2',
-            name: 'Gym Fitness',
-            logo: '💪',
-            description: 'Tu centro de entrenamiento',
-            category: 'Gimnasio',
-            isFavorite: false,
-            activeRewards: 2,
-            activeChallenges: 3,
-            location: 'Av. Deportiva 456',
-            phone: '+1234567891',
-            hours: 'Lun-Dom: 6:00 AM - 10:00 PM',
-        },
-        {
-            id: '3',
-            name: 'Restaurante Bella Vista',
-            logo: '🍽️',
-            description: 'Comida italiana auténtica',
-            category: 'Restaurante',
-            isFavorite: true,
-            activeRewards: 5,
-            activeChallenges: 1,
-            location: 'Plaza Mayor 789',
-            phone: '+1234567892',
-            hours: 'Lun-Dom: 12:00 PM - 11:00 PM',
-        },
-        {
-            id: '4',
-            name: 'Librería El Saber',
-            logo: '📚',
-            description: 'Libros y papelería',
-            category: 'Librería',
-            isFavorite: false,
-            activeRewards: 4,
-            activeChallenges: 2,
-            location: 'Calle Cultura 321',
-            phone: '+1234567893',
-            hours: 'Lun-Sab: 9:00 AM - 7:00 PM',
-        },
-    ],
-    favoriteMerchants: [],
+    merchants: [],
     isLoading: false,
-    setMerchants: (merchants) => set({ merchants }),
-    toggleFavorite: (merchantId) =>
+    error: null,
+
+    loadMerchants: async (customerId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+            const businesses = await getCustomerBusinesses(customerId);
+
+            // Cargar contadores de challenges y gift cards para cada negocio
+            const merchantsWithCounts = await Promise.all(
+                businesses.map(async (business: BusinessWithDetails) => {
+                    const [challengesCount, giftCardsCount] = await Promise.all([
+                        countActiveChallenges(business.businessSettingsId).catch(() => 0),
+                        countActiveGiftCards(customerId, business.businessSettingsId).catch(() => 0),
+                    ]);
+
+                    const emoji = categoryEmojis[business.category] || categoryEmojis['General'];
+
+                    return {
+                        id: business.id,
+                        businessSettingsId: business.businessSettingsId,
+                        name: business.name,
+                        logo: emoji,
+                        description: '', // No hay campo en BD
+                        category: business.category,
+                        isFavorite: business.isFavorite,
+                        activeRewards: giftCardsCount,
+                        activeChallenges: challengesCount,
+                        location: business.address || undefined,
+                        phone: business.phone || undefined,
+                        hours: undefined, // No hay campo en BD
+                        points: business.points,
+                        visitsCount: business.visitsCount,
+                    };
+                })
+            );
+
+            set({ merchants: merchantsWithCounts, isLoading: false });
+        } catch (error: any) {
+            console.error('Error loading merchants:', error);
+            set({ error: error.message || 'Error al cargar comercios', isLoading: false });
+        }
+    },
+
+    refreshMerchants: async (customerId: string) => {
+        await get().loadMerchants(customerId);
+    },
+
+    toggleFavorite: async (customerId: string, merchantId: string) => {
+        const merchant = get().merchants.find(m => m.id === merchantId);
+        if (!merchant) return;
+
+        const newFavoriteValue = !merchant.isFavorite;
+
+        // Optimistic update
         set((state) => ({
-            merchants: state.merchants.map((merchant) =>
-                merchant.id === merchantId
-                    ? { ...merchant, isFavorite: !merchant.isFavorite }
-                    : merchant
+            merchants: state.merchants.map((m) =>
+                m.id === merchantId ? { ...m, isFavorite: newFavoriteValue } : m
             ),
-        })),
-    getMerchantById: (id) => get().merchants.find((m) => m.id === id),
+        }));
+
+        try {
+            await toggleFavoriteBusiness(merchantId, newFavoriteValue);
+        } catch (error: any) {
+            console.error('Error toggling favorite:', error);
+            // Revertir en caso de error
+            set((state) => ({
+                merchants: state.merchants.map((m) =>
+                    m.id === merchantId ? { ...m, isFavorite: !newFavoriteValue } : m
+                ),
+                error: error.message || 'Error al actualizar favorito',
+            }));
+        }
+    },
+
+    getMerchantById: (id: string) => get().merchants.find((m) => m.id === id),
+
+    getMerchantByBusinessSettingsId: (businessSettingsId: number) =>
+        get().merchants.find((m) => m.businessSettingsId === businessSettingsId),
+
+    getFavoriteMerchants: () => get().merchants.filter((m) => m.isFavorite),
 }));

@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Pressable } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Pressable, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Clock, AlertCircle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react-native';
+import { Clock, AlertCircle, ChevronRight, ChevronDown } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useGiftCardsStore, GiftCard } from '@/store/giftCardsStore';
+import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/Colors';
 
 export default function GiftCardsScreen() {
     const [filter, setFilter] = useState<'all' | 'active' | 'used' | 'expired'>('all');
     const [expandedMerchants, setExpandedMerchants] = useState<Record<string, boolean>>({});
-    const { giftCards } = useGiftCardsStore();
+    const [refreshing, setRefreshing] = useState(false);
+
+    const { customer } = useAuthStore();
+    const { giftCards, isLoading, refreshGiftCards } = useGiftCardsStore();
 
     const toggleMerchant = (merchantId: string) => {
         setExpandedMerchants(prev => ({
@@ -18,6 +22,17 @@ export default function GiftCardsScreen() {
             [merchantId]: !prev[merchantId]
         }));
     };
+
+    const onRefresh = useCallback(async () => {
+        if (!customer?.id) return;
+        setRefreshing(true);
+        try {
+            await refreshGiftCards(customer.id);
+        } catch (error) {
+            console.error('Error refreshing gift cards:', error);
+        }
+        setRefreshing(false);
+    }, [customer?.id]);
 
     const filteredCards = giftCards.filter((card) => {
         if (filter === 'all') return true;
@@ -35,19 +50,6 @@ export default function GiftCardsScreen() {
         acc[card.merchantId].cards.push(card);
         return acc;
     }, {} as Record<string, { merchantName: string; merchantLogo: string; cards: GiftCard[] }>);
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'active':
-                return Colors.secondary;
-            case 'used':
-                return Colors.neutral;
-            case 'expired':
-                return '#EF4444';
-            default:
-                return Colors.neutral;
-        }
-    };
 
     const getStatusText = (status: string) => {
         switch (status) {
@@ -72,7 +74,7 @@ export default function GiftCardsScreen() {
 
     const renderGiftCard = (card: GiftCard) => {
         const daysLeft = getDaysUntilExpiration(card.expirationDate);
-        const isExpiringSoon = daysLeft <= 7 && card.status === 'active';
+        const isExpiringSoon = daysLeft <= 7 && daysLeft > 0 && card.status === 'active';
 
         return (
             <Pressable
@@ -192,6 +194,18 @@ export default function GiftCardsScreen() {
         );
     };
 
+    // Loading inicial
+    if (isLoading && giftCards.length === 0) {
+        return (
+            <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center" edges={['top']}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text className="text-gray-500 mt-4" style={{ fontFamily: 'Lato-Regular' }}>
+                    Cargando gift cards...
+                </Text>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
             {/* Header */}
@@ -201,64 +215,66 @@ export default function GiftCardsScreen() {
                 </Text>
 
                 {/* Filter Tabs */}
-                <View className="flex-row gap-2">
-                    <TouchableOpacity
-                        onPress={() => setFilter('all')}
-                        className={`px-4 py-2 rounded-full ${
-                            filter === 'all' ? 'bg-purple-600' : 'bg-gray-100'
-                        }`}
-                        activeOpacity={0.7}
-                    >
-                        <Text
-                            className={`font-bold ${filter === 'all' ? 'text-white' : 'text-gray-600'}`}
-                            style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View className="flex-row gap-2">
+                        <TouchableOpacity
+                            onPress={() => setFilter('all')}
+                            className={`px-4 py-2 rounded-full ${
+                                filter === 'all' ? 'bg-purple-600' : 'bg-gray-100'
+                            }`}
+                            activeOpacity={0.7}
                         >
-                            Todas
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => setFilter('active')}
-                        className={`px-4 py-2 rounded-full ${
-                            filter === 'active' ? 'bg-purple-600' : 'bg-gray-100'
-                        }`}
-                        activeOpacity={0.7}
-                    >
-                        <Text
-                            className={`font-bold ${filter === 'active' ? 'text-white' : 'text-gray-600'}`}
-                            style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            <Text
+                                className={`font-bold ${filter === 'all' ? 'text-white' : 'text-gray-600'}`}
+                                style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            >
+                                Todas
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setFilter('active')}
+                            className={`px-4 py-2 rounded-full ${
+                                filter === 'active' ? 'bg-purple-600' : 'bg-gray-100'
+                            }`}
+                            activeOpacity={0.7}
                         >
-                            Activas
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => setFilter('used')}
-                        className={`px-4 py-2 rounded-full ${
-                            filter === 'used' ? 'bg-purple-600' : 'bg-gray-100'
-                        }`}
-                        activeOpacity={0.7}
-                    >
-                        <Text
-                            className={`font-bold ${filter === 'used' ? 'text-white' : 'text-gray-600'}`}
-                            style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            <Text
+                                className={`font-bold ${filter === 'active' ? 'text-white' : 'text-gray-600'}`}
+                                style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            >
+                                Activas
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setFilter('used')}
+                            className={`px-4 py-2 rounded-full ${
+                                filter === 'used' ? 'bg-purple-600' : 'bg-gray-100'
+                            }`}
+                            activeOpacity={0.7}
                         >
-                            Usadas
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => setFilter('expired')}
-                        className={`px-4 py-2 rounded-full ${
-                            filter === 'expired' ? 'bg-purple-600' : 'bg-gray-100'
-                        }`}
-                        activeOpacity={0.7}
-                    >
-                        <Text
-                            className={`font-bold ${filter === 'expired' ? 'text-white' : 'text-gray-600'}`}
-                            style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            <Text
+                                className={`font-bold ${filter === 'used' ? 'text-white' : 'text-gray-600'}`}
+                                style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            >
+                                Usadas
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setFilter('expired')}
+                            className={`px-4 py-2 rounded-full ${
+                                filter === 'expired' ? 'bg-purple-600' : 'bg-gray-100'
+                            }`}
+                            activeOpacity={0.7}
                         >
-                            Expiradas
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                            <Text
+                                className={`font-bold ${filter === 'expired' ? 'text-white' : 'text-gray-600'}`}
+                                style={{ fontFamily: 'Lato-Bold', fontSize: 14 }}
+                            >
+                                Expiradas
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
             </View>
 
             {/* Gift Cards List */}
@@ -266,6 +282,14 @@ export default function GiftCardsScreen() {
                 className="flex-1 px-6"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingTop: 20, paddingBottom: 100 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[Colors.primary]}
+                        tintColor={Colors.primary}
+                    />
+                }
             >
                 {Object.entries(groupedByMerchant).map(([merchantId, data]) => (
                     <View key={merchantId} className="mb-6">
@@ -326,7 +350,7 @@ export default function GiftCardsScreen() {
                     </View>
                 ))}
 
-                {filteredCards.length === 0 && (
+                {filteredCards.length === 0 && !isLoading && (
                     <View className="items-center justify-center py-20">
                         <Text
                             className="text-gray-400 text-center"

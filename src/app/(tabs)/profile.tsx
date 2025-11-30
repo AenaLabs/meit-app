@@ -4,21 +4,68 @@ import { User, Settings, CreditCard, HelpCircle, LogOut, ChevronRight, Bell, Shi
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors } from "@/constants/Colors";
 import { useAuthStore } from "@/store/authStore";
+import { usePointsStore } from "@/store/pointsStore";
+import { useGiftCardsStore } from "@/store/giftCardsStore";
 import { useRouter } from "expo-router";
+import { useEffect } from "react";
 
 export default function ProfileScreen() {
-    const { user, signOut } = useAuthStore();
+    const { customer, signOut } = useAuthStore();
+    const { lifetimePoints, generalPoints, merchantPoints, isInitialized: pointsInitialized, loadPoints, refreshPoints } = usePointsStore();
+    const { giftCards, isInitialized: giftCardsInitialized, loadGiftCards, refreshGiftCards } = useGiftCardsStore();
     const router = useRouter();
+
+    // Cargar datos cuando hay un customer - SIEMPRE recargar para obtener datos frescos
+    useEffect(() => {
+        if (customer?.id) {
+            console.log('🔄 ProfileScreen: Cargando datos del customer:', customer.id);
+            console.log('📊 Customer data:', {
+                total_points: customer.total_points,
+                lifetime_points: customer.lifetime_points,
+                visits_count: customer.visits_count
+            });
+
+            // Recargar datos en cada visita para asegurar que estén actualizados
+            refreshPoints(customer.id);
+            refreshGiftCards(customer.id);
+        }
+    }, [customer?.id]);
 
     const handleSignOut = async () => {
         await signOut();
         router.replace("/auth/login");
     };
 
+    // Calcular puntos acumulados HISTÓRICOS desde customer_businesses (merchantPoints)
+    // Usamos lifetimePoints porque representa todos los puntos ganados, no solo los disponibles
+    const totalLifetimePointsFromBusinesses = merchantPoints.reduce((sum, mp) => sum + mp.lifetimePoints, 0);
+
+    // Contar todas las gift cards (no solo activas)
+    const totalGiftCardsCount = giftCards.length;
+
+    // Nota: Las visitas se manejan a nivel de customers.visits_count
+    // Este campo SÍ se actualiza cuando se registra una visita
+    const totalVisits = customer?.visits_count || 0;
+
+    console.log('📈 ProfileScreen render:', {
+        lifetimePoints,
+        generalPoints,
+        totalLifetimePointsFromBusinesses,
+        totalGiftCardsCount,
+        giftCardsTotal: giftCards.length,
+        totalVisits,
+        merchantPointsCount: merchantPoints.length,
+        merchantPointsDetails: merchantPoints.map(mp => ({
+            name: mp.merchantName,
+            points: mp.points,
+            lifetime: mp.lifetimePoints
+        }))
+    });
+
     const stats = [
-        { label: "Puntos acumulados", value: "1,200", icon: Award },
-        { label: "Gift Cards", value: "8", icon: Gift },
-        { label: "Comercios visitados", value: "4", icon: CreditCard },
+        { label: "Puntos acumulados", value: totalLifetimePointsFromBusinesses.toLocaleString(), icon: Award },
+        { label: "Gift Cards", value: totalGiftCardsCount.toString(), icon: Gift },
+        { label: "Visitas", value: totalVisits.toString(), icon: CreditCard },
     ];
 
     const menuSections = [
@@ -26,7 +73,6 @@ export default function ProfileScreen() {
             title: "Cuenta",
             items: [
                 { icon: User, label: "Editar Perfil", color: "#8B5CF6", bgColor: "#F3E8FF" },
-                { icon: CreditCard, label: "Mis Tarjetas", color: "#EC4899", bgColor: "#FCE7F3" },
                 { icon: Bell, label: "Notificaciones", color: "#F59E0B", bgColor: "#FEF3C7" },
             ]
         },
@@ -46,7 +92,10 @@ export default function ProfileScreen() {
         }
     ];
 
-    const userName = user?.phone ? `Usuario ${user.phone.slice(-4)}` : "Usuario";
+    const userName = customer?.name || "Usuario";
+    const memberSince = customer?.created_at
+        ? new Date(customer.created_at).getFullYear().toString()
+        : new Date().getFullYear().toString();
 
     return (
         <View className="flex-1 bg-gray-50">
@@ -68,7 +117,7 @@ export default function ProfileScreen() {
                                 <User size={48} color={Colors.primary} />
                             </View>
                             <Text className="text-white text-2xl font-header mb-1">{userName}</Text>
-                            <Text className="text-white/80 text-sm font-body">Miembro desde 2025</Text>
+                            <Text className="text-white/80 text-sm font-body">Miembro desde {memberSince}</Text>
                         </View>
 
                         {/* Stats Cards */}

@@ -37,10 +37,28 @@ export default function ScannerScreen() {
 
         // Parse QR code data
         // Expected formats:
-        // - "merchant:ID" for merchant registration
+        // - "meit://business/ID" for business registration (NEW - from app QR)
+        // - "merchant:ID" for merchant registration (legacy)
         // - "transaction:MERCHANT_ID:AMOUNT" for point transactions
 
-        if (data.startsWith('merchant:')) {
+        // New format: meit://business/{businessSettingsId}
+        if (data.startsWith('meit://business/')) {
+            const businessSettingsId = data.replace('meit://business/', '');
+            // Validar que sea un número
+            if (isNaN(parseInt(businessSettingsId))) {
+                Alert.alert(
+                    'Código QR no válido',
+                    'El código escaneado no contiene un ID de comercio válido',
+                    [{ text: 'OK', onPress: () => setScanned(false) }]
+                );
+                return;
+            }
+            // Navegar a pantalla de registro (replace para no apilar)
+            setScanned(false);
+            router.replace(`/register-business/${businessSettingsId}`);
+        }
+        // Legacy format: merchant:{id}
+        else if (data.startsWith('merchant:')) {
             const merchantId = data.replace('merchant:', '');
             Alert.alert(
                 'Comercio Detectado',
@@ -152,106 +170,105 @@ export default function ScannerScreen() {
                     facing="back"
                     onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
                     enableTorch={flashOn}
-                >
-                {/* Header */}
-                <SafeAreaView className="flex-1" edges={['top']}>
-                    <View className="px-6 pt-4">
-                        <View className="flex-row justify-between items-center">
-                            <Text
-                                className="text-white text-2xl font-bold"
-                                style={{ fontFamily: 'Lato-Bold' }}
-                            >
-                                Escanear QR
-                            </Text>
-                            <TouchableOpacity
-                                onPress={() => setFlashOn(!flashOn)}
-                                className="bg-white/20 p-3 rounded-full"
-                                activeOpacity={0.7}
-                            >
-                                {flashOn ? (
-                                    <FlashlightOff size={24} color="white" />
-                                ) : (
-                                    <Flashlight size={24} color="white" />
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {/* Scanner Frame */}
-                    <View className="flex-1 items-center justify-center px-6">
-                        <View className="relative">
-                            {/* Scanner Frame */}
-                            <View
-                                className="border-4 border-white rounded-3xl"
-                                style={{
-                                    width: 280,
-                                    height: 280,
-                                }}
-                            >
-                                {/* Corner Decorations */}
-                                <View className="absolute -top-1 -left-1 w-12 h-12 border-t-8 border-l-8 rounded-tl-3xl" style={{ borderColor: Colors.secondary }} />
-                                <View className="absolute -top-1 -right-1 w-12 h-12 border-t-8 border-r-8 rounded-tr-3xl" style={{ borderColor: Colors.secondary }} />
-                                <View className="absolute -bottom-1 -left-1 w-12 h-12 border-b-8 border-l-8 rounded-bl-3xl" style={{ borderColor: Colors.secondary }} />
-                                <View className="absolute -bottom-1 -right-1 w-12 h-12 border-b-8 border-r-8 rounded-br-3xl" style={{ borderColor: Colors.secondary }} />
-                            </View>
-
-                            {/* Scanning Line Animation could go here */}
-                        </View>
-
-                        <Text
-                            className="text-white text-center mt-8 px-6"
-                            style={{ fontFamily: 'Lato-Regular', fontSize: 16 }}
-                        >
-                            Apunta la cámara al código QR
-                        </Text>
-                        <Text
-                            className="text-gray-400 text-center mt-2 px-6"
-                            style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
-                        >
-                            Se escaneará automáticamente
-                        </Text>
-                    </View>
-
-                    {/* Instructions */}
-                    <View className="px-6 pb-8">
-                        <View className="bg-white/10 backdrop-blur-lg rounded-3xl p-6">
-                            <Text
-                                className="text-white font-bold mb-3"
-                                style={{ fontFamily: 'Lato-Bold', fontSize: 16 }}
-                            >
-                                ¿Qué puedes escanear?
-                            </Text>
-                            <View className="space-y-2">
-                                <View className="flex-row items-start mb-2">
-                                    <View
-                                        className="w-2 h-2 rounded-full mt-2 mr-3"
-                                        style={{ backgroundColor: Colors.secondary }}
-                                    />
-                                    <Text
-                                        className="text-gray-200 flex-1"
-                                        style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
-                                    >
-                                        QR de comercios para registrarte
-                                    </Text>
-                                </View>
-                                <View className="flex-row items-start">
-                                    <View
-                                        className="w-2 h-2 rounded-full mt-2 mr-3"
-                                        style={{ backgroundColor: Colors.secondary }}
-                                    />
-                                    <Text
-                                        className="text-gray-200 flex-1"
-                                        style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
-                                    >
-                                        QR de transacciones para acumular puntos
-                                    </Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-                </SafeAreaView>
-            </CameraView>
+                />
             )}
+
+            {/* Overlay UI - positioned absolutely on top of camera */}
+            <SafeAreaView style={StyleSheet.absoluteFillObject} edges={['top']} pointerEvents="box-none">
+                {/* Header */}
+                <View className="px-6 pt-4" pointerEvents="box-none">
+                    <View className="flex-row justify-between items-center">
+                        <Text
+                            className="text-white text-2xl font-bold"
+                            style={{ fontFamily: 'Lato-Bold' }}
+                        >
+                            Escanear QR
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => setFlashOn(!flashOn)}
+                            className="bg-white/20 p-3 rounded-full"
+                            activeOpacity={0.7}
+                        >
+                            {flashOn ? (
+                                <FlashlightOff size={24} color="white" />
+                            ) : (
+                                <Flashlight size={24} color="white" />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Scanner Frame */}
+                <View className="flex-1 items-center justify-center px-6" pointerEvents="none">
+                    <View className="relative">
+                        {/* Scanner Frame */}
+                        <View
+                            className="border-4 border-white rounded-3xl"
+                            style={{
+                                width: 280,
+                                height: 280,
+                            }}
+                        >
+                            {/* Corner Decorations */}
+                            <View className="absolute -top-1 -left-1 w-12 h-12 border-t-8 border-l-8 rounded-tl-3xl" style={{ borderColor: Colors.secondary }} />
+                            <View className="absolute -top-1 -right-1 w-12 h-12 border-t-8 border-r-8 rounded-tr-3xl" style={{ borderColor: Colors.secondary }} />
+                            <View className="absolute -bottom-1 -left-1 w-12 h-12 border-b-8 border-l-8 rounded-bl-3xl" style={{ borderColor: Colors.secondary }} />
+                            <View className="absolute -bottom-1 -right-1 w-12 h-12 border-b-8 border-r-8 rounded-br-3xl" style={{ borderColor: Colors.secondary }} />
+                        </View>
+                    </View>
+
+                    <Text
+                        className="text-white text-center mt-8 px-6"
+                        style={{ fontFamily: 'Lato-Regular', fontSize: 16 }}
+                    >
+                        Apunta la cámara al código QR
+                    </Text>
+                    <Text
+                        className="text-gray-400 text-center mt-2 px-6"
+                        style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
+                    >
+                        Se escaneará automáticamente
+                    </Text>
+                </View>
+
+                {/* Instructions */}
+                <View className="px-6 pb-8" pointerEvents="none">
+                    <View className="bg-white/10 backdrop-blur-lg rounded-3xl p-6">
+                        <Text
+                            className="text-white font-bold mb-3"
+                            style={{ fontFamily: 'Lato-Bold', fontSize: 16 }}
+                        >
+                            ¿Qué puedes escanear?
+                        </Text>
+                        <View className="space-y-2">
+                            <View className="flex-row items-start mb-2">
+                                <View
+                                    className="w-2 h-2 rounded-full mt-2 mr-3"
+                                    style={{ backgroundColor: Colors.secondary }}
+                                />
+                                <Text
+                                    className="text-gray-200 flex-1"
+                                    style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
+                                >
+                                    QR de comercios para registrarte
+                                </Text>
+                            </View>
+                            <View className="flex-row items-start">
+                                <View
+                                    className="w-2 h-2 rounded-full mt-2 mr-3"
+                                    style={{ backgroundColor: Colors.secondary }}
+                                />
+                                <Text
+                                    className="text-gray-200 flex-1"
+                                    style={{ fontFamily: 'Lato-Regular', fontSize: 14 }}
+                                >
+                                    QR de transacciones para acumular puntos
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </SafeAreaView>
         </View>
     );
 }

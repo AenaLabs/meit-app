@@ -8,6 +8,7 @@ import { useMerchantsStore } from '@/store/merchantsStore';
 import { usePointsStore } from '@/store/pointsStore';
 import { useGiftCardsStore } from '@/store/giftCardsStore';
 import { useChallengesStore } from '@/store/challengesStore';
+import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/Colors';
 
 type Tab = 'challenges' | 'giftcards';
@@ -17,16 +18,20 @@ export default function StoreDetailScreen() {
     const [activeTab, setActiveTab] = useState<Tab>('challenges');
     const [showInfo, setShowInfo] = useState(false);
 
+    const { customer } = useAuthStore();
     const { getMerchantById, toggleFavorite } = useMerchantsStore();
     const { getPointsByMerchant, transactions } = usePointsStore();
     const { getGiftCardsByMerchant } = useGiftCardsStore();
     const { getChallengesByMerchant } = useChallengesStore();
 
     const merchant = getMerchantById(id as string);
-    const points = getPointsByMerchant(id as string);
-    const giftCards = getGiftCardsByMerchant(id as string);
-    const challenges = getChallengesByMerchant(id as string).filter(c => c.status === 'active');
-    const merchantTransactions = transactions.filter(t => t.merchantId === id);
+
+    // Usar business_settings_id para obtener puntos, challenges y gift cards
+    const businessSettingsId = merchant?.businessSettingsId.toString();
+    const points = businessSettingsId ? getPointsByMerchant(businessSettingsId) : 0;
+    const giftCards = businessSettingsId ? getGiftCardsByMerchant(businessSettingsId) : [];
+    const challenges = businessSettingsId ? getChallengesByMerchant(businessSettingsId).filter(c => c.status === 'active') : [];
+    const merchantTransactions = businessSettingsId ? transactions.filter(t => t.merchantId === businessSettingsId) : [];
 
     if (!merchant) {
         return (
@@ -348,7 +353,7 @@ export default function StoreDetailScreen() {
                                 <Info size={24} color="white" />
                             </TouchableOpacity>
                             <TouchableOpacity
-                                onPress={() => toggleFavorite(merchant.id)}
+                                onPress={() => customer?.id && toggleFavorite(customer.id, merchant.id)}
                                 className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
                             >
                                 <Heart

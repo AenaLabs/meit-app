@@ -1,80 +1,109 @@
 import { useState } from "react";
-import { View, Text, Alert } from "react-native";
+import { View, Text, Alert, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { supabase } from "@/services/supabase";
-import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { signInWithEmail } from "@/services/auth";
+import { useAuthStore } from "@/store/authStore";
 
 export default function LoginScreen() {
-    const [phone, setPhone] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const router = useRouter();
-    const { setSession } = useAuthStore();
+    const setSession = useAuthStore((state) => state.setSession);
+
+    const validateEmail = (email: string) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    };
 
     const handleLogin = async () => {
-        // TODO: Implementar autenticación real con Supabase
-        // Por ahora, crear una sesión simulada
-        const mockSession = {
-            access_token: "mock-token",
-            refresh_token: "mock-refresh-token",
-            expires_in: 3600,
-            token_type: "bearer",
-            user: {
-                id: "mock-user-id",
-                email: phone + "@mock.com",
-                phone: phone,
-                created_at: new Date().toISOString(),
-                app_metadata: {},
-                user_metadata: {},
-                aud: "authenticated",
+        if (!email || !validateEmail(email)) {
+            Alert.alert("Error", "Por favor ingresa un email válido");
+            return;
+        }
+
+        if (!password) {
+            Alert.alert("Error", "Por favor ingresa tu contraseña");
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const { session } = await signInWithEmail(email, password);
+
+            if (!session) {
+                throw new Error("No se pudo iniciar sesión");
             }
-        } as any;
 
-        setSession(mockSession);
-        router.replace("/(tabs)");
+            // Establecer sesión (cargará customer automáticamente)
+            await setSession(session);
 
-        // Código original comentado para cuando se implemente la autenticación:
-        // if (!phone || phone.length < 10) {
-        //     Alert.alert("Error", "Por favor ingresa un número válido");
-        //     return;
-        // }
-        //
-        // setLoading(true);
-        // const { error } = await supabase.auth.signInWithOtp({
-        //     phone: phone.startsWith("+") ? phone : `+58${phone}`,
-        // });
-        //
-        // setLoading(false);
-        //
-        // if (error) {
-        //     Alert.alert("Error", error.message);
-        // } else {
-        //     router.push({ pathname: "/auth/otp", params: { phone } });
-        // }
+            // Navegar a la app
+            router.replace("/(tabs)");
+        } catch (error: any) {
+            // Manejar errores comunes
+            if (error.message?.includes('Invalid login credentials')) {
+                Alert.alert("Error", "Email o contraseña incorrectos");
+            } else if (error.message?.includes('Email not confirmed')) {
+                Alert.alert(
+                    "Email no verificado",
+                    "Por favor verifica tu email antes de iniciar sesión",
+                    [
+                        { text: "OK" }
+                    ]
+                );
+            } else {
+                Alert.alert("Error", error.message || "No se pudo iniciar sesión");
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <SafeAreaView className="flex-1 bg-white p-6 justify-center">
-            <View className="mb-10">
-                <Text className="text-3xl font-header text-primary mb-2">Bienvenido a Meit!</Text>
-                <Text className="text-neutral font-body">Ingresa tu número para continuar</Text>
+            <View className="mb-8">
+                <Text className="text-3xl font-header text-primary mb-2">
+                    Bienvenido de nuevo!
+                </Text>
+                <Text className="text-neutral font-body">
+                    Ingresa tus datos para continuar
+                </Text>
             </View>
 
             <Input
-                label="Teléfono"
-                placeholder="4121234567"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
+                label="Email"
+                placeholder="tu@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+            />
+
+            <Input
+                label="Contraseña"
+                placeholder="Tu contraseña"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
             />
 
             <Button
-                title="Enviar Código"
+                title="Iniciar sesión"
                 onPress={handleLogin}
                 loading={loading}
             />
+
+            <View className="mt-6 items-center">
+                <Text className="text-neutral font-body mb-2">¿No tienes cuenta?</Text>
+                <TouchableOpacity onPress={() => router.push("/auth/register")}>
+                    <Text className="text-primary font-bold text-lg">Regístrate aquí</Text>
+                </TouchableOpacity>
+            </View>
         </SafeAreaView>
     );
 }
